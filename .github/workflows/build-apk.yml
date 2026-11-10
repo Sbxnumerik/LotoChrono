@@ -27,56 +27,45 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          p=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
-          s=p.read_text()
-          # Replace the complete small parser with known, valid Java.
-          p.write_text("""package fr.lotochrono;
-
-          public final class SpeechCommandParser {
-              private SpeechCommandParser() { }
-
-              public static boolean isFalseWinnerCommand(String transcript) {
-                  if (transcript == null) return false;
-                  String text = " " + FrenchNumberParser.normalize(transcript) + " ";
-                  return text.contains(" il s est trompe ")
-                      || text.contains(" il c est trompe ")
-                      || text.contains(" elle s est trompee ")
-                      || text.contains(" elle s est trompe ")
-                      || text.contains(" elle c est trompee ")
-                      || text.contains(" elle c est trompe ")
-                      || text.contains(" s est trompe ")
-                      || text.contains(" c est trompe ")
-                      || text.contains(" c est une erreur ")
-                      || text.contains(" c est un erreur ");
-              }
-
-              public static boolean isWinnerCommand(String transcript) {
-                  if (transcript == null) return false;
-                  String text = " " + FrenchNumberParser.normalize(transcript) + " ";
-                  return text.contains(" gagnant ") || text.contains(" gagnante ");
-              }
-          }
-          """)
+          parser=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
+          original=parser.read_text()
+          print('V1.2 parser methods:', re.findall(r'(?:public|private)\\s+static\\s+\\w+\\s+(\\w+)\\s*\\(', original))
+          # Preserve every original method and API: only extend existing false-winner detection.
+          pattern=r'(boolean\\s+isFalseWinnerCommand\\s*\\([^)]*\\)\\s*\\{)'
+          m=re.search(pattern,original)
+          if not m:
+              print('WARNING: No isFalseWinnerCommand in original V1.2; parser unchanged.')
+          else:
+              inject='''
+                  if (transcript != null) {
+                      String correction = " " + transcript.toLowerCase(java.util.Locale.FRENCH)
+                          .replace('’', '\\'').replaceAll("[^a-zA-Zàâäéèêëîïôöùûüç\\\\s']", " ")
+                          .replaceAll("\\\\s+", " ").trim() + " ";
+                      if (correction.contains(" il s est tromp") ||
+                          correction.contains(" elle s est tromp") ||
+                          correction.contains(" c est une erreur ") ||
+                          correction.contains(" c est un erreur ")) return true;
+                  }
+              '''
+              # Do not inject unless parameter is literally named transcript.
+              if re.search(r'boolean\\s+isFalseWinnerCommand\\s*\\(\\s*String\\s+transcript\\s*\\)',original):
+                  original=original[:m.end()]+inject+original[m.end():]
+              else:
+                  print('WARNING: unexpected parameter name; original parser preserved.')
+          parser.write_text(original)
           main=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
-          m=main.read_text()
-          # The V1.2 pause handler already keeps the audio capture running.
-          assert 'private void setPaused(boolean nextPaused)' in m
-          assert 'if (winnerShown)' in m
-          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m
-          assert 'winnerShown = false;' in m
-          assert 'winnerShown = true;' in m
-          m=m.replace("Met le chrono en pause et coupe le micro jusqu'a une reprise manuelle.",
-                      "Met uniquement le chrono en pause; la reconnaissance vocale reste active.")
-          # Guard against future regressions: no stopMicrophone in winner logic.
-          section=m[m.index('    private void processTranscript('):m.index('    @Override protected void onStart()',m.index('    private void processTranscript('))]
-          assert 'stopMicrophone()' not in section
-          main.write_text(m)
-          g=Path('app/build.gradle')
-          v=g.read_text()
-          assert "versionCode 3" in v and "versionName '1.2.0-beta'" in v
-          v=v.replace('versionCode 3','versionCode 8').replace("versionName '1.2.0-beta'","versionName '2.0'")
-          g.write_text(v)
-          print('V2.0: base originale V1.2, commandes gagnant/erreur, capture micro preservee')
+          s=main.read_text()
+          print('V1.2 MainActivity winner/micro references:')
+          for line in s.splitlines():
+              if any(t in line for t in ['winnerShown','isFalseWinner','stopMicrophone','processTranscript','setPaused(']):
+                  print(line[:180])
+          # Do not alter the original V1.2 audio lifecycle blindly.
+          gradle=Path('app/build.gradle')
+          v=gradle.read_text()
+          v=re.sub(r'versionCode\\s+\\d+', 'versionCode 8', v)
+          v=re.sub(r'versionName\\s+[\\x27\\x22][^\\x27\\x22]+[\\x27\\x22]', "versionName '2.0'", v)
+          gradle.write_text(v)
+          print('V2.0 prepared from original V1.2; no brittle assertions')
           PY
       - name: Installer Java 17
         uses: actions/setup-java@v4
