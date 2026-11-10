@@ -33,10 +33,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Installer Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configurer Android SDK existant
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
       - name: Installer plateforme Android 35
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || test "${PIPESTATUS[1]}" -eq 0
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Installer Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
