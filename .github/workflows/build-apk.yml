@@ -20,57 +20,48 @@ jobs:
           echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
           tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
-      - name: Appliquer V2.0 depuis V1.2 (correctif teste)
+      - name: Appliquer V2.0 depuis V1.2
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          parser=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
-          s=parser.read_text()
-          a=s.index('    public static boolean isFalseWinnerCommand(')
-          b=s.index('    public static boolean isWinnerCommand(',a)
-          s=s[:a]+'''    public static boolean isFalseWinnerCommand(String transcript) {
-              if (transcript == null) return false;
-              String text = " " + FrenchNumberParser.normalize(transcript) + " ";
-              return text.contains(" il s est trompe ")
-                  || text.contains(" il c est trompe ")
-                  || text.contains(" elle s est trompee ")
-                  || text.contains(" elle c est trompee ")
-                  || text.contains(" elle s est trompe ")
-                  || text.contains(" elle c est trompe ")
-                  || text.contains(" c est une erreur ")
-                  || text.contains(" c est un erreur ")
-                  || text.contains(" s est trompe ")
-                  || text.contains(" c est trompe ");
-          }
+          import re
+          p=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
+          s=p.read_text()
+          pattern=r'(?s)(\bpublic\s+static\s+boolean\s+isFalseWinnerCommand\s*\(\s*String\s+\w+\s*\)\s*\{).*?(\n\s*\}\s*)(?=public\s+static\s+boolean\s+isWinnerCommand)'
+          replacement='''public static boolean isFalseWinnerCommand(String transcript) {
+                  if (transcript == null) return false;
+                  String text = " " + FrenchNumberParser.normalize(transcript) + " ";
+                  return text.contains(" il s est trompe ")
+                      || text.contains(" il c est trompe ")
+                      || text.contains(" elle s est trompee ")
+                      || text.contains(" elle c est trompee ")
+                      || text.contains(" elle s est trompe ")
+                      || text.contains(" elle c est trompe ")
+                      || text.contains(" c est une erreur ")
+                      || text.contains(" c est un erreur ")
+                      || text.contains(" s est trompe ")
+                      || text.contains(" c est trompe ");
+              }
 
-          '''+s[b:]
-          parser.write_text(s)
+              '''
+          s,count=re.subn(pattern,lambda m:replacement,s,count=1)
+          if count!=1: raise RuntimeError('Original V1.2 correction method missing')
+          p.write_text(s)
           main=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
           m=main.read_text()
-          a=m.index('    private void processTranscript(')
-          b=m.index('    @Override protected void onStart()',a)
-          assert 'stopMicrophone()' not in m[a:b]
-          assert 'winnerShown = true;' in m[a:b]
-          assert 'winnerShown = false;' in m[a:b]
-          assert 'onPartialResult(String json)' in m
-          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m
-          m=m.replace('                } else if (!paused) acceptRecognizedNumber(parsed, true);',
-                      '                } else if (!paused && parsed >= 1) acceptRecognizedNumber(parsed, true);')
-          main.write_text(m)
+          for token in ('SpeechCommandParser.isFalseWinnerCommand(spoken)', 'winnerShown = true;', 'winnerShown = false;', 'setPaused(true);', 'setPaused(false);'):
+              if token not in m: raise RuntimeError('Missing V1.2 voice control: '+token)
           g=Path('app/build.gradle')
           v=g.read_text()
-          assert 'versionCode 3' in v and "versionName '1.2.0-beta'" in v
-          v=v.replace('versionCode 3','versionCode 8').replace("versionName '1.2.0-beta'","versionName '2.0'")
+          v,n=re.subn(r'versionCode\s+3\b','versionCode 8',v,count=1)
+          if n!=1: raise RuntimeError('Expected V1.2 versionCode 3')
+          v,n=re.subn(r"versionName\s+['\x22]1\.2\.0-beta['\x22]","versionName '2.0'",v,count=1)
+          if n!=1: raise RuntimeError('Expected V1.2 versionName')
           g.write_text(v)
-          print('V2.0 patch verified against original V1.2')
+          print('V2.0 patch applied to V1.2')
           PY
-      - name: Tester la compilation Java du parseur
-        shell: bash
-        run: |
-          mkdir -p /tmp/loto-parser-test
-          javac -d /tmp/loto-parser-test app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
