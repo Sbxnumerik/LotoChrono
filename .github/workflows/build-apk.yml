@@ -20,53 +20,57 @@ jobs:
           echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
           tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
-      - name: Version 2.0 depuis les sources originales 1.2
+      - name: Appliquer V2.0 depuis V1.2 (correctif teste)
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
           parser=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
-          original=parser.read_text()
-          print('V1.2 parser methods:', re.findall(r'(?:public|private)\\s+static\\s+\\w+\\s+(\\w+)\\s*\\(', original))
-          # Preserve every original method and API: only extend existing false-winner detection.
-          pattern=r'(boolean\\s+isFalseWinnerCommand\\s*\\([^)]*\\)\\s*\\{)'
-          m=re.search(pattern,original)
-          if not m:
-              print('WARNING: No isFalseWinnerCommand in original V1.2; parser unchanged.')
-          else:
-              inject='''
-                  if (transcript != null) {
-                      String correction = " " + transcript.toLowerCase(java.util.Locale.FRENCH)
-                          .replace('’', '\\'').replaceAll("[^a-zA-Zàâäéèêëîïôöùûüç\\\\s']", " ")
-                          .replaceAll("\\\\s+", " ").trim() + " ";
-                      if (correction.contains(" il s est tromp") ||
-                          correction.contains(" elle s est tromp") ||
-                          correction.contains(" c est une erreur ") ||
-                          correction.contains(" c est un erreur ")) return true;
-                  }
-              '''
-              # Do not inject unless parameter is literally named transcript.
-              if re.search(r'boolean\\s+isFalseWinnerCommand\\s*\\(\\s*String\\s+transcript\\s*\\)',original):
-                  original=original[:m.end()]+inject+original[m.end():]
-              else:
-                  print('WARNING: unexpected parameter name; original parser preserved.')
-          parser.write_text(original)
+          s=parser.read_text()
+          a=s.index('    public static boolean isFalseWinnerCommand(')
+          b=s.index('    public static boolean isWinnerCommand(',a)
+          s=s[:a]+'''    public static boolean isFalseWinnerCommand(String transcript) {
+              if (transcript == null) return false;
+              String text = " " + FrenchNumberParser.normalize(transcript) + " ";
+              return text.contains(" il s est trompe ")
+                  || text.contains(" il c est trompe ")
+                  || text.contains(" elle s est trompee ")
+                  || text.contains(" elle c est trompee ")
+                  || text.contains(" elle s est trompe ")
+                  || text.contains(" elle c est trompe ")
+                  || text.contains(" c est une erreur ")
+                  || text.contains(" c est un erreur ")
+                  || text.contains(" s est trompe ")
+                  || text.contains(" c est trompe ");
+          }
+
+          '''+s[b:]
+          parser.write_text(s)
           main=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
-          s=main.read_text()
-          print('V1.2 MainActivity winner/micro references:')
-          for line in s.splitlines():
-              if any(t in line for t in ['winnerShown','isFalseWinner','stopMicrophone','processTranscript','setPaused(']):
-                  print(line[:180])
-          # Do not alter the original V1.2 audio lifecycle blindly.
-          gradle=Path('app/build.gradle')
-          v=gradle.read_text()
-          v=re.sub(r'versionCode\\s+\\d+', 'versionCode 8', v)
-          v=re.sub(r'versionName\\s+[\\x27\\x22][^\\x27\\x22]+[\\x27\\x22]', "versionName '2.0'", v)
-          gradle.write_text(v)
-          print('V2.0 prepared from original V1.2; no brittle assertions')
+          m=main.read_text()
+          a=m.index('    private void processTranscript(')
+          b=m.index('    @Override protected void onStart()',a)
+          assert 'stopMicrophone()' not in m[a:b]
+          assert 'winnerShown = true;' in m[a:b]
+          assert 'winnerShown = false;' in m[a:b]
+          assert 'onPartialResult(String json)' in m
+          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m
+          m=m.replace('                } else if (!paused) acceptRecognizedNumber(parsed, true);',
+                      '                } else if (!paused && parsed >= 1) acceptRecognizedNumber(parsed, true);')
+          main.write_text(m)
+          g=Path('app/build.gradle')
+          v=g.read_text()
+          assert 'versionCode 3' in v and "versionName '1.2.0-beta'" in v
+          v=v.replace('versionCode 3','versionCode 8').replace("versionName '1.2.0-beta'","versionName '2.0'")
+          g.write_text(v)
+          print('V2.0 patch verified against original V1.2')
           PY
+      - name: Tester la compilation Java du parseur
+        shell: bash
+        run: |
+          mkdir -p /tmp/loto-parser-test
+          javac -d /tmp/loto-parser-test app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
