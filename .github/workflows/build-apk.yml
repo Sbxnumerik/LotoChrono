@@ -97,7 +97,7 @@ jobs:
           v=re.sub(r'versionName\s+[\x27\x22][^\x27\x22]+[\x27\x22]',"versionName '2.0'",v)
           g.write_text(v)
           print('V2.0 correction commands applied')
-                    PY
+          PY
       - name: Verifier la compilation du parseur Java
         run: |
           mkdir -p /tmp/loto-java
