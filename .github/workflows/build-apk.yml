@@ -1,4 +1,4 @@
-name: Compiler LotoChrono 2.0 APK
+name: Compiler LotoChrono 3.0 APK
 on:
   workflow_dispatch:
   push:
@@ -20,7 +20,7 @@ jobs:
           echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
           tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
-      - name: Appliquer V2.0 depuis V1.2
+      - name: Appliquer V3.0 depuis V1.2
         shell: bash
         run: |
           set -euo pipefail
@@ -79,10 +79,10 @@ jobs:
           m.write_text(t)
           g=Path('app/build.gradle')
           v=g.read_text()
-          v=re.sub(r'versionCode\s+\d+','versionCode 8',v)
-          v=re.sub(r'versionName\s+[\x27\x22][^\x27\x22]+[\x27\x22]',"versionName '2.0'",v)
+          v=re.sub(r'versionCode\s+\d+','versionCode 9',v)
+          v=re.sub(r'versionName\s+[\x27\x22][^\x27\x22]+[\x27\x22]',"versionName '3.0'",v)
           g.write_text(v)
-          print('V2.0 correction commands applied')
+          print('V3.0 correction commands applied')
           PY
       - name: Verifier la compilation du parseur Java
         run: |
@@ -113,6 +113,6 @@ jobs:
       - name: Publier APK telechargeable
         uses: actions/upload-artifact@v4
         with:
-          name: LotoChrono-V2-0-APK
+          name: LotoChrono-V3-0-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
