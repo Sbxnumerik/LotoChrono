@@ -1,8 +1,8 @@
-name: Compiler LotoChrono V3.0 APK
+name: Compiler LotoChrono V4.0 APK
 on:
   workflow_dispatch:
   push:
-    branches: [Loto_3.0]
+    branches: [Loto_4.0]
 
 jobs:
   build:
@@ -22,6 +22,15 @@ jobs:
           test -f app/src/main/java/fr/lotochrono/SpeechCommandParser.java
           grep -q 'winnerNumber' app/src/main/java/fr/lotochrono/MainActivity.java
           grep -q 'versionName' app/build.gradle
+      - name: Ajouter les deux visuels V4 aux ressources Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s Interface.png
+          test -s Gagnant.png
+          mkdir -p app/src/main/res/drawable-nodpi
+          cp Interface.png app/src/main/res/drawable-nodpi/v4_interface.png
+          cp Gagnant.png app/src/main/res/drawable-nodpi/v4_gagnant.png
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
@@ -45,6 +54,6 @@ jobs:
       - name: Publier APK
         uses: actions/upload-artifact@v4
         with:
-          name: LotoChrono-V3-0-APK
+          name: LotoChrono-V4-0-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
