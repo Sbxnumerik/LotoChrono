@@ -19,7 +19,7 @@ jobs:
           echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
           tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
-      - name: Appliquer commandes vocales V3.0 sur les sources V1.2
+      - name: Ajouter les commandes V3.0 a la base V1.2
         shell: bash
         run: |
           set -euo pipefail
@@ -28,31 +28,35 @@ jobs:
           import re
           p = Path("app/src/main/java/fr/lotochrono/SpeechCommandParser.java")
           s = p.read_text()
-          start = s.index("    public static boolean isFalseWinnerCommand(")
-          end = s.index("    public static boolean isWinnerCommand(", start)
+          pattern = r'    public static boolean isFalseWinnerCommand\\(String transcript\\) \\{.*?\\n    \\}'
           replacement = """    public static boolean isFalseWinnerCommand(String transcript) {
               if (transcript == null) return false;
               String text = " " + FrenchNumberParser.normalize(transcript) + " ";
               return text.contains(" il s est trompe ")
+                  || text.contains(" il c est trompe ")
                   || text.contains(" elle s est trompee ")
+                  || text.contains(" elle c est trompee ")
                   || text.contains(" elle s est trompe ")
+                  || text.contains(" elle c est trompe ")
                   || text.contains(" c est une erreur ");
-          }
-
-          """
-          s = s[:start] + replacement + s[end:]
+          }"""
+          s, count = re.subn(pattern, lambda _: replacement, s, count=1, flags=re.S)
+          if count != 1:
+              raise RuntimeError("Methode d'annulation introuvable dans la base V1.2")
           p.write_text(s)
-          m = Path("app/src/main/java/fr/lotochrono/MainActivity.java").read_text()
-          assert 'winnerOverlay = new FrameLayout(this)' in m, "Ecran gagnant V1.2 absent"
-          assert 'winnerNumber.setTag("winnerNumber")' in m, "Numero gagnant V1.2 absent"
-          assert 'winnerShown = true' in m, "Commande gagnant V1.2 absente"
-          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m, "Annulation V1.2 absente"
+          m = Path("app/src/main/java/fr/lotochrono/MainActivity.java")
+          t = m.read_text()
+          required = ['winnerOverlay = new FrameLayout(this)', 'winnerNumber.setTag("winnerNumber")', 'winnerShown = true', 'SpeechCommandParser.isFalseWinnerCommand(spoken)']
+          for marker in required:
+              if marker not in t:
+                  raise RuntimeError("Fonction V1.2 absente: " + marker)
+          # Keep the original winner UI, microphone and timer logic intact.
           g = Path("app/build.gradle")
           v = g.read_text()
-          v = re.sub(r'versionCode\\s+\\d+', 'versionCode 9', v)
-          v = re.sub(r'versionName\\s+[\\x27\\x22][^\\x27\\x22]+[\\x27\\x22]', "versionName '3.0'", v)
+          v = re.sub(r'versionCode\s+\d+', 'versionCode 9', v)
+          v = re.sub(r'versionName\s+["\\x27][^"\\x27]+["\\x27]', "versionName '3.0'", v)
           g.write_text(v)
-          print("V3.0: V1.2 conservee, commandes vocales ajoutees")
+          print("V3.0: six commandes vocales, interface V1.2 preservee")
           PY
       - name: Verifier le parseur vocal
         run: |
