@@ -1,4 +1,4 @@
-name: Compiler Loto Chrono APK
+name: Compiler LotoChrono 1.2 APK
 on:
   workflow_dispatch:
   push:
@@ -12,32 +12,40 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Restaurer les sources Android
+      - name: Recuperer les sources de la release Loto_1.2
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          cat source-bundle/part-aa.txt source-bundle/part-ab.txt source-bundle/part-ac.txt | base64 --decode > /tmp/loto-source.tar.xz
-          echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
-          tar -xJf /tmp/loto-source.tar.xz
+          set -euo pipefail
+          mkdir -p /tmp/loto-release /tmp/loto-extract
+          gh release download Loto_1.2 --repo "${GITHUB_REPOSITORY}" --pattern '*.zip' --dir /tmp/loto-release
+          zipfile=$(find /tmp/loto-release -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          test -n "$zipfile" || { echo 'Aucun ZIP joint a la release Loto_1.2'; exit 1; }
+          unzip -q "$zipfile" -d /tmp/loto-extract
+          project=$(find /tmp/loto-extract -type f -path '*/app/build.gradle' -print -quit)
+          test -n "$project" || { echo 'Le ZIP ne contient pas app/build.gradle'; exit 1; }
+          project_root=$(dirname "$(dirname "$project")")
+          cp -a "$project_root"/. .
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - name: Installer Android SDK
+        uses: android-actions/setup-android@v3
       - name: Installer plateforme Android 35
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          yes | "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Installer Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Compiler Loto Chrono
+      - name: Compiler APK
         run: gradle --no-daemon :app:assembleDebug
-      - name: Publier APK
+      - name: Publier APK telechargeable
         uses: actions/upload-artifact@v4
         with:
-          name: LotoChrono-V1-1-APK
+          name: LotoChrono-V1-2-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
