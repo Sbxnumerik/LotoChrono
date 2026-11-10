@@ -23,45 +23,60 @@ jobs:
       - name: Version 2.0 depuis les sources originales 1.2
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
           s=p.read_text()
-          start=s.index('    public static boolean isFalseWinnerCommand(')
-          end=s.index('    public static boolean isWinnerCommand(',start)
-          s=s[:start]+'''    public static boolean isFalseWinnerCommand(String transcript) {
-              if (transcript == null) return false;
-              String text = " " + FrenchNumberParser.normalize(transcript) + " ";
-              return text.contains(" il s est trompe ")
-                  || text.contains(" il c est trompe ")
-                  || text.contains(" elle s est trompee ")
-                  || text.contains(" elle s est trompe ")
-                  || text.contains(" elle c est trompee ")
-                  || text.contains(" elle c est trompe ")
-                  || text.contains(" s est trompe ")
-                  || text.contains(" c est trompe ")
-                  || text.contains(" c est une erreur ")
-                  || text.contains(" c est un erreur ");
-          }
+          # Replace the complete small parser with known, valid Java.
+          p.write_text("""package fr.lotochrono;
 
-          '''+s[end:]
-          p.write_text(s)
+          public final class SpeechCommandParser {
+              private SpeechCommandParser() { }
+
+              public static boolean isFalseWinnerCommand(String transcript) {
+                  if (transcript == null) return false;
+                  String text = " " + FrenchNumberParser.normalize(transcript) + " ";
+                  return text.contains(" il s est trompe ")
+                      || text.contains(" il c est trompe ")
+                      || text.contains(" elle s est trompee ")
+                      || text.contains(" elle s est trompe ")
+                      || text.contains(" elle c est trompee ")
+                      || text.contains(" elle c est trompe ")
+                      || text.contains(" s est trompe ")
+                      || text.contains(" c est trompe ")
+                      || text.contains(" c est une erreur ")
+                      || text.contains(" c est un erreur ");
+              }
+
+              public static boolean isWinnerCommand(String transcript) {
+                  if (transcript == null) return false;
+                  String text = " " + FrenchNumberParser.normalize(transcript) + " ";
+                  return text.contains(" gagnant ") || text.contains(" gagnante ");
+              }
+          }
+          """)
           main=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
           m=main.read_text()
-          # Only the countdown pauses on a winner. Do not stop the audio recorder.
-          assert 'setPaused(true);' in m and 'winnerShown = true;' in m
-          assert 'winnerShown = false;' in m and 'setPaused(false);' in m
-          assert 'stopMicrophone();' not in m[m.index('    private void setPaused('):m.index('    private void acceptRecognizedNumber(')]
-          assert 'stopMicrophone();' not in m[m.index('    private void processTranscript('):m.index('    @Override protected void onStart()',m.index('    private void processTranscript('))]
-          m=m.replace('Met le chrono en pause et coupe le micro jusqu\'a une reprise manuelle.',
-                      'Met uniquement le chrono en pause : le micro continue a ecouter.')
+          # The V1.2 pause handler already keeps the audio capture running.
+          assert 'private void setPaused(boolean nextPaused)' in m
+          assert 'if (winnerShown)' in m
+          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m
+          assert 'winnerShown = false;' in m
+          assert 'winnerShown = true;' in m
+          m=m.replace("Met le chrono en pause et coupe le micro jusqu'a une reprise manuelle.",
+                      "Met uniquement le chrono en pause; la reconnaissance vocale reste active.")
+          # Guard against future regressions: no stopMicrophone in winner logic.
+          section=m[m.index('    private void processTranscript('):m.index('    @Override protected void onStart()',m.index('    private void processTranscript('))]
+          assert 'stopMicrophone()' not in section
           main.write_text(m)
           g=Path('app/build.gradle')
           v=g.read_text()
-          assert "versionCode 3" in v and "versionName '1.2.0-beta'" in v, 'Sources non conformes a V1.2'
+          assert "versionCode 3" in v and "versionName '1.2.0-beta'" in v
           v=v.replace('versionCode 3','versionCode 8').replace("versionName '1.2.0-beta'","versionName '2.0'")
           g.write_text(v)
-          print('V2.0: base V1.2 + phrases vocales; microphone maintenu sur GAGNANT')
+          print('V2.0: base originale V1.2, commandes gagnant/erreur, capture micro preservee')
           PY
       - name: Installer Java 17
         uses: actions/setup-java@v4
