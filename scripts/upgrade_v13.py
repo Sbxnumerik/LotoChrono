@@ -3,7 +3,9 @@ p=Path("app/src/main/java/fr/lotochrono/MainActivity.java")
 s=p.read_text()
 def change(old,new):
  global s
- if old not in s:\n  print("Patch V1.3 non applicable (ligne absente): "+old[:100])\n  return
+ if old not in s:
+  print("Patch V1.3 non applicable (ligne absente): "+old[:100])
+  return
  s=s.replace(old,new)
 change('import android.os.SystemClock;', 'import android.os.SystemClock;\nimport android.content.SharedPreferences;')
 change(' * Aucun historique n\'est sauvegarde entre les sessions, seul le timer l\'est.', ' * La partie et les reglages sont sauvegardes localement.')
