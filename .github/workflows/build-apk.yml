@@ -29,8 +29,10 @@ jobs:
           import re
           p=Path('app/src/main/java/fr/lotochrono/SpeechCommandParser.java')
           s=p.read_text()
-          pattern=r'(?s)(\bpublic\s+static\s+boolean\s+isFalseWinnerCommand\s*\(\s*String\s+\w+\s*\)\s*\{).*?(\n\s*\}\s*)(?=public\s+static\s+boolean\s+isWinnerCommand)'
-          replacement='''public static boolean isFalseWinnerCommand(String transcript) {
+          if 'isFalseWinnerCommand(' not in s:
+              pos=s.rfind('}')
+              if pos<0: raise RuntimeError('Invalid SpeechCommandParser class')
+              method='''    public static boolean isFalseWinnerCommand(String transcript) {
                   if (transcript == null) return false;
                   String text = " " + FrenchNumberParser.normalize(transcript) + " ";
                   return text.contains(" il s est trompe ")
@@ -40,28 +42,66 @@ jobs:
                       || text.contains(" elle s est trompe ")
                       || text.contains(" elle c est trompe ")
                       || text.contains(" c est une erreur ")
-                      || text.contains(" c est un erreur ")
-                      || text.contains(" s est trompe ")
-                      || text.contains(" c est trompe ");
+                      || text.contains(" s est trompe ");
               }
-
-              '''
-          s,count=re.subn(pattern,lambda m:replacement,s,count=1)
-          if count!=1: raise RuntimeError('Original V1.2 correction method missing')
+          '''
+              s=s[:pos]+method+s[pos:]
           p.write_text(s)
-          main=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
-          m=main.read_text()
-          for token in ('SpeechCommandParser.isFalseWinnerCommand(spoken)', 'winnerShown = true;', 'winnerShown = false;', 'setPaused(true);', 'setPaused(false);'):
-              if token not in m: raise RuntimeError('Missing V1.2 voice control: '+token)
+          m=Path('app/src/main/java/fr/lotochrono/MainActivity.java')
+          t=m.read_text()
+          if 'private boolean winnerShown' not in t:
+              t=t.replace('public class MainActivity extends Activity implements RecognitionListener {','public class MainActivity extends Activity implements RecognitionListener {\n    private boolean winnerShown = false;\n    private long lastVoiceCommandAt = 0;',1)
+          start=t.find('    private void processTranscript(String json) {')
+          end=t.find('    @Override protected void onStart()',start)
+          if start<0 or end<0: raise RuntimeError('Cannot locate original V1.2 voice dispatcher')
+          new='''    private void processTranscript(String json) {
+                  if (destroyed) return;
+                  try {
+                      String spoken = new JSONObject(json).optString("text", "");
+                      boolean winner = SpeechCommandParser.isWinnerCommand(spoken);
+                      boolean mistake = SpeechCommandParser.isFalseWinnerCommand(spoken);
+                      int parsed = winner || mistake ? -1 : FrenchNumberParser.parse(spoken);
+                      if (!winner && !mistake && parsed < 1) return;
+                      runOnUiThread(() -> {
+                          if (!foreground || destroyed) return;
+                          long now = SystemClock.elapsedRealtime();
+                          if (winnerShown) {
+                              if (mistake && now - lastVoiceCommandAt > 1000) {
+                                  lastVoiceCommandAt = now;
+                                  winnerShown = false;
+                                  setPaused(false);
+                                  renderScreen();
+                              }
+                          } else if (winner && now - lastVoiceCommandAt > 1000) {
+                              lastVoiceCommandAt = now;
+                              setPaused(true);
+                              winnerShown = true;
+                              renderScreen();
+                          } else if (!paused && parsed >= 1) acceptRecognizedNumber(parsed, true);
+                      });
+                  } catch (Exception ignored) { }
+              }
+          
+          '''
+          t=t[:start]+new+t[end:]
+          partial=t.find('    @Override public void onPartialResult(')
+          if partial>=0:
+              prefix=t[:partial]
+              suffix=t[partial:]
+              suffix=suffix.replace('if (SpeechCommandParser.isWinnerCommand(spoken)) {','if (SpeechCommandParser.isWinnerCommand(spoken) || SpeechCommandParser.isFalseWinnerCommand(spoken)) {',1)
+              t=prefix+suffix
+          m.write_text(t)
           g=Path('app/build.gradle')
           v=g.read_text()
-          v,n=re.subn(r'versionCode\s+3\b','versionCode 8',v,count=1)
-          if n!=1: raise RuntimeError('Expected V1.2 versionCode 3')
-          v,n=re.subn(r"versionName\s+['\x22]1\.2\.0-beta['\x22]","versionName '2.0'",v,count=1)
-          if n!=1: raise RuntimeError('Expected V1.2 versionName')
+          v=re.sub(r'versionCode\s+\d+','versionCode 8',v)
+          v=re.sub(r'versionName\s+[\x27\x22][^\x27\x22]+[\x27\x22]',"versionName '2.0'",v)
           g.write_text(v)
-          print('V2.0 patch applied to V1.2')
-          PY
+          print('V2.0 correction commands applied')
+                    PY
+      - name: Verifier la compilation du parseur Java
+        run: |
+          mkdir -p /tmp/loto-java
+          javac -d /tmp/loto-java app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
