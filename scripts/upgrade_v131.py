@@ -21,8 +21,8 @@ assert icon.is_file(), "Icon source missing"
 Path("app/src/main/res/drawable/ic_loto.xml").write_text(icon.read_text())
 g=Path("app/build.gradle")
 v=g.read_text()
-v=re.sub(r"versionCode\\s+\\d+", "versionCode 5", v)
-v=re.sub(r"versionName\\s+['\"][^'\"]+['\"]", "versionName '1.3.1'", v)
+v=re.sub(r"versionCode\s+\d+", "versionCode 5", v)
+v=re.sub(r"versionName\s+['\"][^'\"]+['\"]", "versionName '1.3.1'", v)
 g.write_text(v)
 assert "versionCode 5" in v and "versionName '1.3.1'" in v
 print("LotoChrono 1.3.1 UI, icon, version applied")
