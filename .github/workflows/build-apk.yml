@@ -12,67 +12,25 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Restaurer les sources Android
-        shell: bash
-        run: |
-          cat source-bundle/part-aa.txt source-bundle/part-ab.txt source-bundle/part-ac.txt | base64 --decode > /tmp/loto-source.tar.xz
-          echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
-          tar -xJf /tmp/loto-source.tar.xz
-          test -f app/src/main/java/fr/lotochrono/MainActivity.java
-      - name: Installer commandes vocales V3.0 sur la base V1.2
+      - name: Extraire les sources V3.0 deposees sur GitHub
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path("app/src/main/java/fr/lotochrono/SpeechCommandParser.java")
-          s = p.read_text()
-          start = s.find("    public static boolean isFalseWinnerCommand(")
-          end = s.find("    public static boolean isWinnerCommand(", start)
-          if start < 0 or end < 0:
-              raise RuntimeError("Base V1.2 non conforme: parseur absent")
-          method = """    public static boolean isFalseWinnerCommand(String transcript) {
-              if (transcript == null) return false;
-              String text = " " + FrenchNumberParser.normalize(transcript) + " ";
-              return text.contains(" il s est trompe ")
-                  || text.contains(" il c est trompe ")
-                  || text.contains(" elle s est trompee ")
-                  || text.contains(" elle c est trompee ")
-                  || text.contains(" elle s est trompe ")
-                  || text.contains(" elle c est trompe ")
-                  || text.contains(" c est une erreur ");
-          }
-
-          """
-          s = s[:start] + method + s[end:]
-          p.write_text(s)
-          m = Path("app/src/main/java/fr/lotochrono/MainActivity.java")
-          t = m.read_text()
-          if 'winnerNumber.setTag("winnerNumber")' not in t:
-              raise RuntimeError("Numero gagnant V1.2 absent")
-          old = "setPaused(true);\n                    winnerShown = true;"
-          new = "winnerShown = true;\n                    setPaused(true);"
-          if old not in t and new not in t:
-              raise RuntimeError("Annonce gagnant V1.2 introuvable")
-          t = t.replace(old, new, 1)
-          m.write_text(t)
-          g = Path("app/build.gradle")
-          v = g.read_text()
-          v = re.sub(r'versionCode\s+\d+', 'versionCode 9', v)
-          v = re.sub(r'versionName\s+[^\n]+', "versionName '3.0'", v)
-          g.write_text(v)
-          print("V3.0 : commandes vocales et ecran gagnant V1.2 conserves")
-          PY
-      - name: Verifier le parseur vocal
-        run: |
-          mkdir -p /tmp/loto-java
-          javac -d /tmp/loto-java app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
+          test -f LotoChrono_V3.0_sources_corrigees.zip
+          unzip -o -q LotoChrono_V3.0_sources_corrigees.zip
+          test -f app/src/main/java/fr/lotochrono/MainActivity.java
+          test -f app/src/main/java/fr/lotochrono/SpeechCommandParser.java
+          grep -q 'winnerNumber' app/src/main/java/fr/lotochrono/MainActivity.java
+          grep -q 'versionName' app/build.gradle
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verifier le parseur vocal
+        run: |
+          mkdir -p /tmp/loto-java
+          javac -d /tmp/loto-java app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
       - name: Installer plateforme Android 35
         run: |
           echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
@@ -82,7 +40,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Compiler Loto Chrono
+      - name: Compiler LotoChrono V3.0
         run: gradle --no-daemon :app:assembleDebug
       - name: Publier APK
         uses: actions/upload-artifact@v4
