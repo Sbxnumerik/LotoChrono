@@ -51,44 +51,30 @@ jobs:
           t=m.read_text()
           if 'private boolean winnerShown' not in t:
               t=t.replace('public class MainActivity extends Activity implements RecognitionListener {','public class MainActivity extends Activity implements RecognitionListener {\n    private boolean winnerShown = false;\n    private long lastVoiceCommandAt = 0;',1)
-          start=t.find('    private void processTranscript(String json) {')
-          end=t.find('    @Override protected void onStart()',start)
-          if start<0 or end<0: raise RuntimeError('Cannot locate original V1.2 voice dispatcher')
-          new='''    private void processTranscript(String json) {
-                  if (destroyed) return;
-                  try {
-                      String spoken = new JSONObject(json).optString("text", "");
-                      boolean winner = SpeechCommandParser.isWinnerCommand(spoken);
-                      boolean mistake = SpeechCommandParser.isFalseWinnerCommand(spoken);
-                      int parsed = winner || mistake ? -1 : FrenchNumberParser.parse(spoken);
-                      if (!winner && !mistake && parsed < 1) return;
-                      runOnUiThread(() -> {
-                          if (!foreground || destroyed) return;
-                          long now = SystemClock.elapsedRealtime();
-                          if (winnerShown) {
-                              if (mistake && now - lastVoiceCommandAt > 1000) {
-                                  lastVoiceCommandAt = now;
-                                  winnerShown = false;
-                                  setPaused(false);
-                                  renderScreen();
-                              }
-                          } else if (winner && now - lastVoiceCommandAt > 1000) {
-                              lastVoiceCommandAt = now;
-                              setPaused(true);
-                              winnerShown = true;
-                              renderScreen();
-                          } else if (!paused && parsed >= 1) acceptRecognizedNumber(parsed, true);
-                      });
-                  } catch (Exception ignored) { }
-              }
-          
-          '''
-          t=t[:start]+new+t[end:]
+          # Preserve the V1.2 dispatcher and winner overlay; add only voice corrections.
+          # The previous replacement lost the original UI lifecycle.
+          if 'SpeechCommandParser.isFalseWinnerCommand(spoken)' not in t:
+              t=t.replace('boolean winner = SpeechCommandParser.isWinnerCommand(spoken);',
+                          'boolean winner = SpeechCommandParser.isWinnerCommand(spoken);\n            boolean falseWinner = SpeechCommandParser.isFalseWinnerCommand(spoken);',1)
+          # Show winner before pausing; pausing triggers renderScreen().
+          t=t.replace('setPaused(true);\n                    winnerShown = true;',
+                      'winnerShown = true;\n                    setPaused(true);')
+          # Ensure winner screen is above flash and main controls.
+          t=t.replace('winnerOverlay.setVisibility(winnerShown ? View.VISIBLE : View.GONE);',
+                      'winnerOverlay.setVisibility(winnerShown ? View.VISIBLE : View.GONE);\n            if (winnerShown) winnerOverlay.bringToFront();')
+          # No audio stop on winner screen; preserve microphone loop from V1.2.
+          if 'winnerOverlay.setVisibility(winnerShown ? View.VISIBLE : View.GONE);' not in t:
+              raise RuntimeError('Winner overlay of V1.2 missing: refusing build')
+          if 'winnerNumber.setTag("winnerNumber");' not in t:
+              raise RuntimeError('Winner number view missing: refusing build')
+          if 'winnerShown = true;' not in t:
+              raise RuntimeError('Winner voice action missing: refusing build')
           partial=t.find('    @Override public void onPartialResult(')
           if partial>=0:
               prefix=t[:partial]
               suffix=t[partial:]
-              suffix=suffix.replace('if (SpeechCommandParser.isWinnerCommand(spoken)) {','if (SpeechCommandParser.isWinnerCommand(spoken) || SpeechCommandParser.isFalseWinnerCommand(spoken)) {',1)
+              suffix=suffix.replace('if (SpeechCommandParser.isWinnerCommand(spoken)) {',
+                                    'if (SpeechCommandParser.isWinnerCommand(spoken) || SpeechCommandParser.isFalseWinnerCommand(spoken)) {',1)
               t=prefix+suffix
           m.write_text(t)
           g=Path('app/build.gradle')
