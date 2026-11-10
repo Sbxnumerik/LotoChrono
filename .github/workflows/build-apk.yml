@@ -1,8 +1,8 @@
-name: Compiler Loto Chrono APK
+name: Compiler LotoChrono V3.0 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [Loto_3.0]
 
 jobs:
   build:
@@ -19,6 +19,45 @@ jobs:
           echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
           tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
+      - name: Appliquer commandes vocales V3.0 sur les sources V1.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("app/src/main/java/fr/lotochrono/SpeechCommandParser.java")
+          s = p.read_text()
+          start = s.index("    public static boolean isFalseWinnerCommand(")
+          end = s.index("    public static boolean isWinnerCommand(", start)
+          replacement = """    public static boolean isFalseWinnerCommand(String transcript) {
+              if (transcript == null) return false;
+              String text = " " + FrenchNumberParser.normalize(transcript) + " ";
+              return text.contains(" il s est trompe ")
+                  || text.contains(" elle s est trompee ")
+                  || text.contains(" elle s est trompe ")
+                  || text.contains(" c est une erreur ");
+          }
+
+          """
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s)
+          m = Path("app/src/main/java/fr/lotochrono/MainActivity.java").read_text()
+          assert 'winnerOverlay = new FrameLayout(this)' in m, "Ecran gagnant V1.2 absent"
+          assert 'winnerNumber.setTag("winnerNumber")' in m, "Numero gagnant V1.2 absent"
+          assert 'winnerShown = true' in m, "Commande gagnant V1.2 absente"
+          assert 'SpeechCommandParser.isFalseWinnerCommand(spoken)' in m, "Annulation V1.2 absente"
+          g = Path("app/build.gradle")
+          v = g.read_text()
+          v = re.sub(r'versionCode\\s+\\d+', 'versionCode 9', v)
+          v = re.sub(r'versionName\\s+[\\x27\\x22][^\\x27\\x22]+[\\x27\\x22]', "versionName '3.0'", v)
+          g.write_text(v)
+          print("V3.0: V1.2 conservee, commandes vocales ajoutees")
+          PY
+      - name: Verifier le parseur vocal
+        run: |
+          mkdir -p /tmp/loto-java
+          javac -d /tmp/loto-java app/src/main/java/fr/lotochrono/FrenchNumberParser.java app/src/main/java/fr/lotochrono/SpeechCommandParser.java
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
@@ -38,6 +77,6 @@ jobs:
       - name: Publier APK
         uses: actions/upload-artifact@v4
         with:
-          name: LotoChrono-V1-1-APK
+          name: LotoChrono-V3-0-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
