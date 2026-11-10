@@ -1,4 +1,4 @@
-name: Compiler LotoChrono 1.2 APK
+name: Compiler LotoChrono 1.3 APK
 on:
   workflow_dispatch:
   push:
@@ -28,6 +28,8 @@ jobs:
           project_root=$(dirname "$(dirname "$project")")
           cp -a "$project_root"/. .
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
+      - name: Appliquer les ameliorations V1.3
+        run: python3 scripts/upgrade_v13.py
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
@@ -53,6 +55,6 @@ jobs:
       - name: Publier APK telechargeable
         uses: actions/upload-artifact@v4
         with:
-          name: LotoChrono-V1-2-APK
+          name: LotoChrono-V1-3-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
