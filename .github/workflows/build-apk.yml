@@ -12,21 +12,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Recuperer les sources de la release Loto_1.2
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Restaurer les sources Android depuis le depot
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/loto-release /tmp/loto-extract
-          gh release download Loto_1.2 --repo "${GITHUB_REPOSITORY}" --pattern '*.zip' --dir /tmp/loto-release
-          zipfile=$(find /tmp/loto-release -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-          test -n "$zipfile" || { echo 'Aucun ZIP joint a la release Loto_1.2'; exit 1; }
-          unzip -q "$zipfile" -d /tmp/loto-extract
-          project=$(find /tmp/loto-extract -type f -path '*/app/build.gradle' -print -quit)
-          test -n "$project" || { echo 'Le ZIP ne contient pas app/build.gradle'; exit 1; }
-          project_root=$(dirname "$(dirname "$project")")
-          cp -a "$project_root"/. .
+          cat source-bundle/part-aa.txt source-bundle/part-ab.txt source-bundle/part-ac.txt | base64 --decode > /tmp/loto-source.tar.xz
+          echo "f6f10f14edf4288b2d5fd1494f32e899e5013aec0d69b6a8c609ffbfe4e55915  /tmp/loto-source.tar.xz" | sha256sum --check
+          tar -xJf /tmp/loto-source.tar.xz
           test -f app/src/main/java/fr/lotochrono/MainActivity.java
       - name: Appliquer les ameliorations V1.3
         run: python3 scripts/upgrade_v13.py
