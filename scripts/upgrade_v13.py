@@ -9,7 +9,13 @@ def change(old,new):
  s=s.replace(old,new)
 change('import android.os.SystemClock;', 'import android.os.SystemClock;\nimport android.content.SharedPreferences;')
 change(' * Aucun historique n\'est sauvegarde entre les sessions, seul le timer l\'est.', ' * La partie et les reglages sont sauvegardes localement.')
-change('    private boolean winnerShown = false;', '    private boolean winnerShown = false;\n    private long lastSavedAt = 0L;')
+# Declare the persisted winner state even when the older source has no such field.
+if 'private boolean winnerShown' not in s:
+ import re
+ s, count = re.subn(r'(public\\s+class\\s+MainActivity\\s+extends\\s+[^\\{]+\\{)', r'\\1\\n    private boolean winnerShown = false;', s, count=1)
+ if count != 1:
+  raise SystemExit("Impossible de trouver la declaration de MainActivity")
+
 change('        buildScreen();\n        handler.post(timerTicker);', '        restoreDraw();\n        buildScreen();\n        handler.post(timerTicker);')
 change('        screen.setBackgroundColor(BG);', '        screen.setBackgroundColor(Color.rgb(5, 18, 39));')
 change('        content.setPadding(dp(landscape ? 20 : 14), dp(12), dp(landscape ? 20 : 14), dp(14));', '        content.setPadding(dp(landscape ? 20 : 14), dp(12), dp(landscape ? 20 : 14), dp(landscape ? 18 : 28));')
